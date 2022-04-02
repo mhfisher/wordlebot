@@ -28,7 +28,13 @@ LETTERS_BY_TEXT_FREQUENCY = {
 
 
 def get_words(words_file):
-    return open(words_file, 'r').read().splitlines()
+    with open(words_file, 'r') as open_words_file:
+        return open_words_file.read().splitlines()
+
+
+def write_words(words_file, all_words):
+    with open(words_file, 'w') as open_words_file:
+        open_words_file.write('\n'.join(all_words))
 
 
 def word_score(word: str, letter_scores: dict) -> float:
@@ -98,8 +104,8 @@ def main():
                          "If not in word list, type 'nogood'.\n"
                          "_____\n")
         if response == 'nogood':
-            # TODO: Save these and update words file.
             all_words.remove(guess)
+            write_words(WORDS_FILE, all_words)
             continue
         elif not set(response).issubset({'n', 'y', 'g'}) or len(response) != 5:
             print('Response seems invalid? Trying again.\n')
