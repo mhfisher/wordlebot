@@ -33,18 +33,23 @@ def get_words(words_file):
 
 def word_score(word: str, letter_scores: dict) -> float:
     """ 
-    Score a word based on distinct letter count, tie-breaking by the
+    Score a word based on distinct letter count minus invalid letter count, tie-breaking by the
     English frequency of its letters.
+    TODO: Consider reducing/removing the distinct score if several letters are known, to prevent
+    scoring rare words highly just because they use distinct letters.
     """
     distinct_score = len(set(word))
     letter_frequency_score = sum(letter_scores[letter.upper()] 
         for letter in word) / 100
     return distinct_score + letter_frequency_score
 
+
 # TODO: handle multiple letter occurrence edge cases
-def _is_possible(guess, word, required_letters, prev_guess_dict):
+def _is_possible(guess, word, required_letters, non_letters, prev_guess_dict):
     """ Check if word is a possible guess. """
     if word in prev_guess_dict:
+        return False
+    if set(non_letters).intersection(set(word)):
         return False
     if not set(required_letters).issubset(set(word)):
         return False
@@ -59,6 +64,7 @@ def make_guess(prev_guess_dict, words_list, letter_scores):
     """ Make a guess based on our play strategy. """
     guess = ['.'] * 5
     # First, identify required positions and required letters.
+    non_letters = []
     required_letters = {}
     for prev_guess, response in prev_guess_dict.items():
         for indx, (letter, value) in enumerate(zip(prev_guess, 
@@ -68,11 +74,13 @@ def make_guess(prev_guess_dict, words_list, letter_scores):
             if value == 'y':
                 required_letters[letter] = required_letters.get(
                     letter, []) + [indx]
+            if value == 'n':
+                non_letters.append(letter)
     guess = ''.join(guess)
     # Next, get all satisfactory words
     possible_words = [word for word in words_list if 
             _is_possible(guess, word, required_letters,
-                prev_guess_dict)]
+                non_letters, prev_guess_dict)]
     # And choose the best one.
     possible_word_scores = [word_score(word, letter_scores)
         for word in possible_words]
@@ -83,9 +91,9 @@ def make_guess(prev_guess_dict, words_list, letter_scores):
 def main():
     prev_guess_dict = {}
     all_words = get_words(WORDS_FILE)
-    while len(prev_guess_dict) < 5:
+    while len(prev_guess_dict) < 6:
         guess = make_guess(prev_guess_dict, all_words, 
-                LETTERS_BY_TEXT_FREQUENCY)
+                LETTERS_BY_DICTIONARY_FREQUENCY)
         print(f"Here's ya guess, kid:\n {guess.upper()}\n")
         response = input("What was the game's response? Type "
             "n for a miss, g for green, and y for yellow. "
@@ -95,10 +103,10 @@ def main():
             # TODO: Save these and update words file.
             all_words.remove(guess)
             continue
-        elif not set(response).issubset({'n', 'y', 'g'}):
+        elif not set(response).issubset({'n', 'y', 'g'}) or len(response) != 5:
             print('Response seems invalid? Trying again.\n')
         elif response == 'ggggg':
-            print('Winner winner chicken dinner. The singularity'
+            print('Winner winner chicken dinner. The singularity '
                 'is nigh!')
             return
         else:
