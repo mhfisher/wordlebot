@@ -86,21 +86,24 @@ def main():
     while len(prev_guess_dict) < 5:
         guess = make_guess(prev_guess_dict, all_words, 
                 LETTERS_BY_TEXT_FREQUENCY)
-        print(f"Here's ya guess, kid:\n {guess}\n")
+        print(f"Here's ya guess, kid:\n {guess.upper()}\n")
         response = input("What was the game's response? Type "
             "n for a miss, g for green, and y for yellow. "
-            "If not in word list, type 'nogood'\n"
+            "If not in word list, type 'nogood'.\n"
             "_____\n")
         if response == 'nogood':
             # TODO: Save these and update words file.
             all_words.remove(guess)
             continue
-        if response == 'ggggg':
+        elif not set(response).issubset({'n', 'y', 'g'}):
+            print('Response seems invalid? Trying again.\n')
+        elif response == 'ggggg':
             print('Winner winner chicken dinner. The singularity'
                 'is nigh!')
             return
-        prev_guess_dict[guess] = response
-    print('We have failed you and our creator. We shall weep'
+        else:
+            prev_guess_dict[guess] = response
+    print('We have failed you and our creator. We shall weep '
         'robot tears.')
 
 
