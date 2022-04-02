@@ -4,8 +4,12 @@ At each turn, play the word with the *most distinct, most frequent
 letters* that contains all known letters (satisfying hard mode) in 
 viable positions.
 """
+from statistics import median
 
 WORDS_FILE = 'five_letter_words.txt'
+# From https://github.com/IlyaSemenov/wikipedia-word-frequency -- thanks @declanvk for finding.
+WORD_FREQUENCY_FILE = 'word_frequency.txt'
+KNOWN_LETTER_THRESHOLD = 3
 
 # Taken from Wikipedia's "Letter frequency". Annoyingly,
 # these don't seem to sum to 100.
@@ -29,33 +33,67 @@ LETTERS_BY_TEXT_FREQUENCY = {
 
 def get_words(words_file):
     with open(words_file, 'r') as open_words_file:
-        return open_words_file.read().splitlines()
+        all_words = open_words_file.read().splitlines()
+    return all_words
 
 
 def write_words(words_file, all_words):
     with open(words_file, 'w') as open_words_file:
         open_words_file.write('\n'.join(all_words))
+    return all_words
 
 
-def word_score(word: str, letter_scores: dict) -> float:
+def get_word_frequencies(word_frequency_file):
+    with open(word_frequency_file, 'r') as open_words_file:
+        word_frequencies = {}
+        lines = open_words_file.read().splitlines()
+        for line in lines:
+            word, frequency = line.split()
+            word_frequencies[word] = int(frequency)
+    return word_frequencies
+
+
+def _missing_word_frequency_score(word_frequencies: dict):
+    """
+    If a word is not in the frequency list, we consider it 'moderately uncommon' and score it at
+    1/2 the median word frequency. Note that this logic is arbitrary and may need tuning.
+    """
+    median_frequency = median(word_frequencies.values())
+    return 0.5 * median_frequency
+
+
+def word_score_simple(word: str,
+                      letter_scores: dict,
+                      word_frequencies: dict,
+                      num_known_letters: int,
+                      missing_word_score: int,
+                      letter_threshold=KNOWN_LETTER_THRESHOLD) -> float:
     """ 
-    Score a word based on distinct letter count minus invalid letter count, tie-breaking by the
-    English frequency of its letters.
-    TODO: Consider reducing/removing the distinct score if several letters are known, to prevent
-    scoring rare words highly just because they use distinct letters.
+    Score a word based on three attributes:
+    (1) The number of distinct letters it contains.
+    (2) The frequency of the word's letters.
+    (3) The word's frequency in English usage.
+
+    If we know more than <letter_threshold> letters, then we change from 'explore' mode to
+    'answer' mode and the priorities are reordered as (3, 1, 2).
     """
     distinct_score = len(set(word))
     letter_frequency_score = sum(letter_scores[letter.upper()]
-                                 for letter in word) / 100
-    return distinct_score + letter_frequency_score
+                                 for letter in word)
+    word_frequency_score = word_frequencies.get(word, missing_word_score)
+    if num_known_letters < letter_threshold:
+        return (distinct_score, letter_frequency_score, word_frequency_score)
+    return (word_frequency_score, distinct_score, letter_frequency_score)
 
 
 # TODO: handle multiple letter occurrence edge cases
 def _is_possible(guess, word, required_letters, non_letters, prev_guess_dict):
     """ Check if word is a possible guess. """
-    if any([word in prev_guess_dict,
-           set(non_letters).intersection(set(word)),
-           not set(required_letters).issubset(set(word))]):
+    if any([
+            word in prev_guess_dict,
+            set(non_letters).intersection(set(word)),
+            not set(required_letters).issubset(set(word))
+    ]):
         return False
     for letter, bad_index_list in required_letters.items():
         if any([word[index] == letter for index in bad_index_list]):
@@ -63,7 +101,7 @@ def _is_possible(guess, word, required_letters, non_letters, prev_guess_dict):
     return all([g_c == w_c or g_c == '.' for g_c, w_c in zip(guess, word)])
 
 
-def make_guess(prev_guess_dict, words_list, letter_scores):
+def make_guess(prev_guess_dict, words_list, letter_scores, word_frequencies, missing_word_score):
     """ Make a guess based on our play strategy. """
     guess = ['.'] * 5
     # First, identify required positions and required letters.
@@ -79,6 +117,8 @@ def make_guess(prev_guess_dict, words_list, letter_scores):
             if value == 'n':
                 non_letters.append(letter)
     guess = ''.join(guess)
+    num_known_letters = len(required_letters) + len(
+        [c for c in guess if c != '.'])
     # Next, get all satisfactory words
     possible_words = [
         word for word in words_list if _is_possible(
@@ -86,7 +126,8 @@ def make_guess(prev_guess_dict, words_list, letter_scores):
     ]
     # And choose the best one.
     possible_word_scores = [
-        word_score(word, letter_scores) for word in possible_words
+        word_score_simple(word, letter_scores, word_frequencies,
+                          num_known_letters, missing_word_score) for word in possible_words
     ]
     return possible_words[possible_word_scores.index(
         max(possible_word_scores))]
@@ -95,9 +136,13 @@ def make_guess(prev_guess_dict, words_list, letter_scores):
 def main():
     prev_guess_dict = {}
     all_words = get_words(WORDS_FILE)
+    word_frequencies = get_word_frequencies(WORD_FREQUENCY_FILE)
+    missing_word_score = _missing_word_frequency_score(word_frequencies)
     while len(prev_guess_dict) < 6:
         guess = make_guess(prev_guess_dict, all_words,
-                           LETTERS_BY_DICTIONARY_FREQUENCY)
+                           LETTERS_BY_DICTIONARY_FREQUENCY,
+                           word_frequencies,
+                           missing_word_score)
         print(f"Here's ya guess, kid:\n {guess.upper()}\n")
         response = input("What was the game's response? Type "
                          "n for a miss, g for green, and y for yellow. "
